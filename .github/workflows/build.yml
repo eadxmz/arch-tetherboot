@@ -1,9 +1,18 @@
-name: Build Custom iPXE with USB Support
+name: Build and Release iPXE (UEFI & BIOS)
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (e.g., v1.0.0)"
+        required: true
+        default: "v1.0.0"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -13,10 +22,10 @@ jobs:
       - name: Checkout repository code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           sudo apt update
-          sudo apt install -y git build-essential liblzma-dev mtools
+          sudo apt install -y git build-essential liblzma-dev mtools syslinux isolinux genisoimage
 
       - name: Clone official iPXE repository
         run: |
@@ -24,28 +33,59 @@ jobs:
 
       - name: Enable USB and HTTPS support
         run: |
-          # Enable USB command
           sed -i 's/\/\* #define USB_CMD \*\//#define USB_CMD/' ipxe-source/src/config/general.h
-          # Enable HTTPS download protocol
           sed -i 's/\/\* #define DOWNLOAD_PROTO_HTTPS \*\//#define DOWNLOAD_PROTO_HTTPS/' ipxe-source/src/config/general.h
 
       - name: Copy custom boot script into source folder
         run: |
           cp boot.ipxe ipxe-source/src/boot.ipxe
 
-      - name: Compile Custom UEFI Binary
+      - name: Compile BIOS (Legacy) Targets
         run: |
           cd ipxe-source/src
-          # Builds a standard x86_64 UEFI binary with your embedded script
+          # Compile BIOS raw USB image, ISO, and PXE chainload binary
+          make bin/ipxe.usb bin/ipxe.iso bin/ipxe.kpxe EMBED=boot.ipxe
+
+      - name: Compile UEFI Targets
+        run: |
+          cd ipxe-source/src
+          # Compile 64-bit UEFI binary
           make bin-x86_64-efi/ipxe.efi EMBED=boot.ipxe
 
-      - name: Prepare Output Files
+      - name: Package Binaries
         run: |
-          mkdir -p output/EFI/BOOT
-          cp ipxe-source/src/bin-x86_64-efi/ipxe.efi output/EFI/BOOT/BOOTX64.EFI
+          mkdir -p dist/uefi-usb/EFI/BOOT
+          mkdir -p dist/bios
+          mkdir -p release-assets
 
-      - name: Upload Compiled Binary Artifact
+          # UEFI Artifacts
+          cp ipxe-source/src/bin-x86_64-efi/ipxe.efi dist/uefi-usb/EFI/BOOT/BOOTX64.EFI
+          cp ipxe-source/src/bin-x86_64-efi/ipxe.efi release-assets/ipxe-x86_64.efi
+
+          # BIOS Artifacts
+          cp ipxe-source/src/bin/ipxe.usb release-assets/ipxe-bios.usb
+          cp ipxe-source/src/bin/ipxe.iso release-assets/ipxe-bios.iso
+          cp ipxe-source/src/bin/ipxe.kpxe release-assets/ipxe-bios.kpxe
+
+          # Zip UEFI USB structure ready to extract to FAT32 drive
+          (cd dist/uefi-usb && zip -r ../../release-assets/ipxe-uefi-fat32.zip EFI)
+
+      - name: Upload Local Workflow Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: custom-usb-netboot-efi
-          path: output/
+          name: ipxe-all-targets
+          path: release-assets/
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+          name: "iPXE Custom Netboot (${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }})"
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/ipxe-uefi-fat32.zip
+            release-assets/ipxe-x86_64.efi
+            release-assets/ipxe-bios.usb
+            release-assets/ipxe-bios.iso
+            release-assets/ipxe-bios.kpxe
