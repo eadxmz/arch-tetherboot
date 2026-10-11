@@ -25,30 +25,25 @@ jobs:
       - name: Install build toolchain
         run: |
           sudo apt update
-          sudo apt install -y git build-essential liblzma-dev mtools syslinux isolinux genisoimage zip
+          sudo apt install -y git build-essential liblzma-dev mtools syslinux isolinux genisoimage zip ca-certificates
 
       - name: Clone official iPXE source
         run: |
           git clone --depth 1 https://github.com/ipxe/ipxe.git ipxe-source
 
-      - name: Configure iPXE features & USB stack
+      - name: Configure iPXE features
         run: |
-          # Use local override headers to guarantee options are enabled
           mkdir -p ipxe-source/src/config/local
           
-          # Enable USB command, HTTPS, and extra protocols
+          # Enable USB command, HTTPS download support, and diagnostic utilities
           cat << 'EOF' > ipxe-source/src/config/local/general.h
           #define USB_CMD
           #define DOWNLOAD_PROTO_HTTPS
           #define PING_CMD
           #define CONSOLE_CMD
-          EOF
-
-          # Explicitly enable USB Host Controller Drivers (xHCI/EHCI/UHCI)
-          cat << 'EOF' > ipxe-source/src/config/local/usb.h
-          #define USB_HCD_XHCI
-          #define USB_HCD_EHCI
-          #define USB_HCD_UHCI
+          #define NSLOOKUP_CMD
+          #define REBOOT_CMD
+          #define POWEROFF_CMD
           EOF
 
       - name: Copy embedded boot script
@@ -58,26 +53,28 @@ jobs:
       - name: Compile BIOS Tethering Binaries
         run: |
           cd ipxe-source/src
-          make bin/ecm--ncm.usb bin/ecm--ncm.iso EMBED=boot.ipxe
+          # Builds BIOS USB disk and ISO with full USB host + ECM/NCM drivers and trusted CA certs
+          make bin/ipxe.usb bin/ipxe.iso EMBED=boot.ipxe TRUST=/etc/ssl/certs/ca-certificates.crt
 
       - name: Compile UEFI Tethering Binary
         run: |
           cd ipxe-source/src
-          # Compile with explicit xhci debugging and embedded script
-          make bin-x86_64-efi/ecm--ncm.efi EMBED=boot.ipxe
+          # Builds 64-bit EFI binary with full USB host + ECM/NCM drivers and trusted CA certs
+          make bin-x86_64-efi/ipxe.efi EMBED=boot.ipxe TRUST=/etc/ssl/certs/ca-certificates.crt
 
       - name: Stage Artifacts
         run: |
           mkdir -p staging/uefi/EFI/BOOT
           mkdir -p release-assets
 
-          # UEFI staging
-          cp ipxe-source/src/bin-x86_64-efi/ecm--ncm.efi staging/uefi/EFI/BOOT/BOOTX64.EFI
-          (cd staging/uefi && zip -r ../../release-assets/ipxe-uefi-tether.zip EFI)
+          # MediCat / Ventoy ready files (no unzipping needed)
+          cp ipxe-source/src/bin-x86_64-efi/ipxe.efi release-assets/arch-netboot-tether.efi
+          cp ipxe-source/src/bin/ipxe.iso release-assets/arch-netboot-tether.iso
+          cp ipxe-source/src/bin/ipxe.usb release-assets/arch-netboot-tether.usb
 
-          # BIOS staging
-          cp ipxe-source/src/bin/ecm--ncm.usb release-assets/ipxe-bios-tether.usb
-          cp ipxe-source/src/bin/ecm--ncm.iso release-assets/ipxe-bios-tether.iso
+          # Standalone FAT32 USB archive
+          cp ipxe-source/src/bin-x86_64-efi/ipxe.efi staging/uefi/EFI/BOOT/BOOTX64.EFI
+          (cd staging/uefi && zip -r ../../release-assets/ipxe-uefi-tether.zip EFI)
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
@@ -86,7 +83,4 @@ jobs:
           name: "iPXE Tethering Build (${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }})"
           draft: false
           prerelease: false
-          files: |
-            release-assets/ipxe-uefi-tether.zip
-            release-assets/ipxe-bios-tether.usb
-            release-assets/ipxe-bios-tether.iso
+          files: release-assets/*
