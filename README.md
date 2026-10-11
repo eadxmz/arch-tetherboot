@@ -1,27 +1,39 @@
 # Custom iPXE Arch Linux Netboot (USB Tethering Edition)
 
-A fully automated, GitHub Actions-driven build pipeline that compiles custom **iPXE** binaries with native USB host controller drivers (`xHCI`/`EHCI`) and USB Ethernet class drivers (`CDC-ECM` / `CDC-NCM`). 
+A GitHub Actions build pipeline that compiles custom **iPXE** binaries with embedded USB host controllers (`xHCI`/`EHCI`) and USB networking drivers (`CDC-ECM` / `CDC-NCM`). 
 
-This setup enables netbooting the official Arch Linux installer over **Android/iOS USB Tethering** or supported USB-to-Ethernet adapters without needing a motherboard LAN port or native Wi-Fi drivers.
-
----
-
-## Features
-
-- **USB Tethering Ready**: Compiles the `ecm--ncm` driver profile to communicate with smartphones and USB network cards directly.
-- **Dual Boot Architecture**: Builds both **UEFI** (`x86_64.efi`) and **Legacy BIOS** (`.iso` / `.usb`) boot targets.
-- **Embedded Script**: Embeds a zero-configuration iPXE script that initializes USB hardware, negotiates DHCP, and chainloads Arch's HTTPS endpoint.
-- **MediCat / Ventoy Native**: Easily drop the output ISO or EFI files straight onto multi-boot drives without altering partition tables.
-- **Automated Releases**: Generates ready-to-flash binaries via GitHub Actions on demand.
+This allows you to netboot the official Arch Linux installer over **Android or iOS USB Tethering**—no Ethernet jack or native Wi-Fi drivers required.
 
 ---
 
-## Repository Structure
+## 1. What Each Release File Is
+
+When the build finishes under your repo's **Releases** tab, you get three files:
+
+| Release File | What's Inside | What It's Used For |
+| :--- | :--- | :--- |
+| `ipxe-uefi-tether.zip` | Contains `EFI/BOOT/BOOTX64.EFI` | Modern UEFI boot (MediCat or standalone USB) |
+| `ipxe-bios-tether.iso` | A bootable CD/ISO image | Older BIOS machines via MediCat, Ventoy, or CD |
+| `ipxe-bios-tether.usb` | A raw byte-for-byte disk image | Older BIOS machines written to a dedicated USB stick |
+
+---
+
+## 2. Setup: Method A — MediCat USB / Ventoy (Recommended)
+
+Since MediCat runs on Ventoy, you do not format your drive or alter partitions. You just place the files into your payload folders.
+
+### Step 1: Download & Extract
+1. Download `ipxe-uefi-tether.zip` and `ipxe-bios-tether.iso` from your GitHub **Releases** page.
+2. Unzip `ipxe-uefi-tether.zip`. Inside the `EFI/BOOT/` folder, you will find `BOOTX64.EFI`.
+3. Rename the files so they are easy to find in the menu:
+   - Rename `BOOTX64.EFI` → `arch-netboot-tether.efi`
+   - Rename `ipxe-bios-tether.iso` → `arch-netboot-tether.iso`
+
+### Step 2: Copy to Your MediCat Drive
+Plug in your MediCat flash drive and copy the two files into any payload directory (for example, inside `/Live_Operating_Systems/` or the drive root):
 
 ```text
-.
-├── .github/
-│   └── workflows/
-│       └── build.yml       # GitHub Actions automated compiler & release engine
-├── boot.ipxe               # Embedded boot script executed by iPXE
-└── README.md
+MediCat_Drive/
+└── Live_Operating_Systems/
+    ├── arch-netboot-tether.efi     <-- Use this when booting UEFI
+    └── arch-netboot-tether.iso     <-- Use this when booting Legacy BIOS
