@@ -1,29 +1,48 @@
 #!ipxe
 
 echo ===================================================
-echo Initializing USB and Network Subsystems...
-echo Ensure USB Tethering is enabled on your phone.
+echo Arch Linux Netboot (USB Tethering)
+echo Ensure your phone is connected and USB Tethering is ON.
 echo ===================================================
 
-# Bring up USB controller drivers (ignores errors if already active)
-usb || echo USB subsystem already initialized.
+# Bring up USB controllers and probe connected devices
+echo Initializing USB subsystems...
+usb || echo USB controllers already active or not detected.
 
-# Allow 2 seconds for the phone to negotiate link speed
-sleep 2
+# Allow phone time to negotiate USB descriptor and CDC network interface
+echo Waiting for device enumeration...
+sleep 3
 
 # Display all detected network interfaces
+echo
+echo Detected interfaces:
 ifstat
+echo
 
-# Attempt DHCP
-dhcp || goto dhcp_failed
+:dhcp_loop
+echo Attempting DHCP configuration...
+dhcp && goto dhcp_ok || goto dhcp_retry
 
-echo Connected successfully! Chainloading Arch Linux netboot...
+:dhcp_retry
+echo
+echo [!] DHCP lease failed. The phone may still be negotiating link state.
+echo     Make sure 'USB Tethering' is enabled in your phone's settings.
+echo
+prompt --key r --timeout 8000 Press 'r' to retry, or waiting 8s to auto-retry... || goto dhcp_loop
+goto dhcp_loop
+
+:dhcp_ok
+echo
+echo [OK] Interface configured successfully!
+route
+echo
+echo Chainloading Arch Linux netboot infrastructure over HTTPS...
+sleep 1
 chain --autofree https://archlinux.org/releng/netboot/archlinux.ipxe || goto boot_failed
 
-:dhcp_failed
-echo DHCP lease failed. Dropping to shell...
-shell
-
 :boot_failed
-echo Chainloading failed. Dropping to shell...
+echo
+echo [!] Failed to chainload Arch Linux netboot.
+echo     Check DNS resolution or HTTPS connectivity.
+echo Dropping to interactive shell (type 'exit' to reboot)...
 shell
