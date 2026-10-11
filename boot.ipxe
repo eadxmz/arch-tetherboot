@@ -1,12 +1,30 @@
 #!ipxe
 
-echo Initializing USB sub-systems...
+echo ===================================================
+echo Initializing USB and Network Subsystems...
+echo Ensure USB Tethering is enabled on your phone.
+echo ===================================================
+
+# Bring up USB host controllers and probe connected devices
 usb ||
-echo Scanning for network interfaces...
+
+# Optional short delay to allow phone USB enumeration
+sleep 2
+
+# Show detected network devices
 ifstat
 
-# Attempt DHCP configuration
-dhcp || shell
+# Obtain IP via DHCP through the tethered connection
+dhcp || goto dhcp_failed
 
-# Chainload the official Arch Linux netboot script
-chain --autofree https://archlinux.org/releng/netboot/archlinux.ipxe || shell
+echo Connected successfully!
+echo Chainloading Arch Linux Netboot over HTTPS...
+chain --autofree https://archlinux.org/releng/netboot/archlinux.ipxe || goto boot_failed
+
+:dhcp_failed
+echo DHCP failed. Dropping to interactive iPXE shell...
+shell
+
+:boot_failed
+echo Failed to chainload Arch Linux netboot. Dropping to shell...
+shell
