@@ -31,25 +31,39 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/ipxe/ipxe.git ipxe-source
 
-      - name: Enable USB and HTTPS support in iPXE config
+      - name: Configure iPXE features & USB stack
         run: |
-          sed -i 's/\/\* #define USB_CMD \*\//#define USB_CMD/' ipxe-source/src/config/general.h
-          sed -i 's/\/\* #define DOWNLOAD_PROTO_HTTPS \*\//#define DOWNLOAD_PROTO_HTTPS/' ipxe-source/src/config/general.h
+          # Use local override headers to guarantee options are enabled
+          mkdir -p ipxe-source/src/config/local
+          
+          # Enable USB command, HTTPS, and extra protocols
+          cat << 'EOF' > ipxe-source/src/config/local/general.h
+          #define USB_CMD
+          #define DOWNLOAD_PROTO_HTTPS
+          #define PING_CMD
+          #define CONSOLE_CMD
+          EOF
+
+          # Explicitly enable USB Host Controller Drivers (xHCI/EHCI/UHCI)
+          cat << 'EOF' > ipxe-source/src/config/local/usb.h
+          #define USB_HCD_XHCI
+          #define USB_HCD_EHCI
+          #define USB_HCD_UHCI
+          EOF
 
       - name: Copy embedded boot script
         run: |
           cp boot.ipxe ipxe-source/src/boot.ipxe
 
-      - name: Compile BIOS Tethering Binaries (ecm--ncm)
+      - name: Compile BIOS Tethering Binaries
         run: |
           cd ipxe-source/src
-          # Builds raw USB disk image and ISO with ECM/NCM drivers embedded
           make bin/ecm--ncm.usb bin/ecm--ncm.iso EMBED=boot.ipxe
 
-      - name: Compile UEFI Tethering Binary (ecm--ncm)
+      - name: Compile UEFI Tethering Binary
         run: |
           cd ipxe-source/src
-          # Builds 64-bit EFI binary with ECM/NCM drivers embedded
+          # Compile with explicit xhci debugging and embedded script
           make bin-x86_64-efi/ecm--ncm.efi EMBED=boot.ipxe
 
       - name: Stage Artifacts
