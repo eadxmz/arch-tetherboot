@@ -1,0 +1,12 @@
+#!ipxe
+
+echo Initializing USB sub-systems...
+usb
+echo Scanning for USB network interfaces...
+ifstat
+
+# Attempt to configure the first available network interface via DHCP
+dhcp || shell
+
+# Chainload the official Arch Linux netboot infrastructure
+chain https://archlinux.org
