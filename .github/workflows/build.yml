@@ -1,0 +1,47 @@
+name: Build Custom iPXE with USB Support
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Allows you to manually trigger the build
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git build-essential liblzma-dev mtools crossbuild-essential-amd64
+
+    - name: Clone official iPXE repository
+      run: |
+        git clone https://github.com ipxe-source
+
+    - name: Enable USB Command in Configuration
+      run: |
+        sed -i 's/\/\* #define USB_CMD \*\//#define USB_CMD/' ipxe-source/src/config/general.h
+
+    - name: Copy custom boot script into source folder
+      run: |
+        cp boot.ipxe ipxe-source/src/boot.ipxe
+
+    - name: Compile Custom UEFI Binary
+      run: |
+        cd ipxe-source/src
+        make bin-x86_64-efi/ecm--ncm.efi EMBED=boot.ipxe DEBUG=xhci
+
+    - name: Prepare Output Files
+      run: |
+        mkdir -p output/EFI/BOOT
+        cp ipxe-source/src/bin-x86_64-efi/ecm--ncm.efi output/EFI/BOOT/BOOTX64.EFI
+
+    - name: Upload Compiled Binary Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: custom-usb-netboot-efi
+        path: output/
